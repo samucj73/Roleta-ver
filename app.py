@@ -4,12 +4,18 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 
-st.set_page_config(page_title="Captura Betfair", layout="centered")
-st.title("🎰 Captura de Números da Roleta - Betfair")
+st.set_page_config(page_title="Captura Betfair", layout="wide")
+st.title("Captura de Números da Roleta - Betfair")
 
-# Sessão de estado
-if "resultados" not in st.session_state:
-    st.session_state.resultados = []
+# Lista de seletores sugeridos para testar automaticamente
+SELETORES_SUGERIDOS = [
+    ".roulette-history .number",         # comum em páginas da Betfair
+    ".history-bar .number",              # comum em Sportingbet
+    ".statistics .number",               # alternativa estatística
+    ".number-history-item",              # comum em componentes JavaScript
+    ".last-numbers span",                # possível estrutura dinâmica
+    ".latest-results .number",           # outro comum
+]
 
 def iniciar_driver():
     chrome_options = Options()
@@ -19,52 +25,61 @@ def iniciar_driver():
     chrome_options.add_argument("--disable-dev-shm-usage")
     return webdriver.Chrome(options=chrome_options)
 
-def coletar_resultados_roleta(url, seletor_css):
+def tentar_seletores(url):
     driver = iniciar_driver()
     driver.get(url)
     time.sleep(10)
     resultados = []
-    try:
-        elementos = driver.find_elements(By.CSS_SELECTOR, seletor_css)
-        for el in elementos:
-            texto = el.text.strip()
-            if texto.isdigit() and 0 <= int(texto) <= 36:
-                resultados.append(texto)
-    except Exception as e:
-        st.error(f"Erro ao coletar: {e}")
+
+    seletor_usado = None
+    for seletor in SELETORES_SUGERIDOS:
+        try:
+            elementos = driver.find_elements(By.CSS_SELECTOR, seletor)
+            temp_resultados = []
+            for el in elementos:
+                texto = el.text.strip()
+                if texto.isdigit() and 0 <= int(texto) <= 36:
+                    temp_resultados.append(texto)
+            if temp_resultados:
+                resultados = temp_resultados
+                seletor_usado = seletor
+                break
+        except Exception:
+            continue
     driver.quit()
-    return resultados
+    return resultados, seletor_usado
 
-# Entrada de dados
-url = st.text_input("Cole a URL da roleta da Betfair:", value="https://play.betfair.bet.br/launch/mobile?returnURL=...")
-
-seletor_css = st.text_input("Seletor CSS dos números:", value=".roulette-history .number")
+# UI
+url = st.text_input("Cole a URL da roleta:", value="https://...")
 
 col1, col2 = st.columns([1, 1])
-
 with col1:
-    if st.button("🎯 Capturar Números"):
-        with st.spinner("Capturando números da roleta..."):
-            resultados = coletar_resultados_roleta(url, seletor_css)
-            if resultados:
-                st.session_state.resultados.extend(resultados)
-                st.success("Números capturados com sucesso!")
-            else:
-                st.warning("Nenhum número encontrado.")
-
+    capturar = st.button("Capturar Números")
 with col2:
-    if st.button("🔄 Resetar"):
-        st.session_state.resultados = []
-        st.info("Resultados resetados!")
+    resetar = st.button("Resetar Resultados")
 
-# Exibir e salvar resultados
+if "resultados" not in st.session_state:
+    st.session_state.resultados = []
+
+# Captura automática testando seletores
+if capturar:
+    with st.spinner("Tentando capturar números com seletores sugeridos..."):
+        resultados, seletor_utilizado = tentar_seletores(url)
+        if resultados:
+            st.session_state.resultados.extend(resultados)
+            st.success(f"Números capturados com sucesso! Seletor usado: `{seletor_utilizado}`")
+            st.write(resultados)
+            with open("numeros_capturados.txt", "w") as f:
+                f.write("\n".join(st.session_state.resultados))
+        else:
+            st.warning("Nenhum número foi capturado com os seletores disponíveis.")
+
+if resetar:
+    st.session_state.resultados = []
+    st.success("Resultados resetados.")
+
+# Exibição final
 if st.session_state.resultados:
-    st.subheader("Resultados Capturados:")
-    st.write(", ".join(st.session_state.resultados))
-
-    # Salvar em .txt
-    with open("resultados_roleta.txt", "w") as f:
-        f.write("\n".join(st.session_state.resultados))
-    
-    with open("resultados_roleta.txt", "rb") as f:
-        st.download_button("📥 Baixar resultados (.txt)", f, file_name="resultados_roleta.txt")
+    st.subheader("Números Coletados:")
+    st.write(st.session_state.resultados)
+    st.download_button("Baixar como .txt", "\n".join(st.session_state.resultados), file_name="numeros_capturados.txt")
