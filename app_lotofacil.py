@@ -1,110 +1,44 @@
 import streamlit as st
 import random
-from collections import Counter
-from datetime import datetime
 import requests
+from datetime import datetime
 
-# === Dezenas da moldura e dezenas primas ===
-MOLDURA = {1, 2, 3, 4, 5, 6, 10, 11, 15, 16, 20, 21, 22, 23, 24, 25}
-PRIMOS = {2, 3, 5, 7, 11, 13, 17, 19, 23}
+# === Funções ===
 
-# === Captura dos concursos ===
-def capturar_ultimos_resultados(qtd=4):
+def capturar_ultimos_resultados(qtd=10):
     url_base = "https://loteriascaixa-api.herokuapp.com/api/lotofacil/"
     concursos = []
     try:
         resp = requests.get(url_base)
         if resp.status_code != 200:
-            st.error("Erro ao buscar o último concurso.")
             return []
         dados = resp.json()
-        ultimo = dados[0] if isinstance(dados, list) else dados
+        if isinstance(dados, list):
+            ultimo = dados[0]
+        else:
+            ultimo = dados
         numero_atual = int(ultimo.get("concurso"))
-        for i in range(qtd):
+        dezenas = sorted([int(d) for d in ultimo.get("dezenas")])
+        data_concurso = ultimo.get("data")
+        concursos.append((numero_atual, data_concurso, dezenas))
+        for i in range(1, qtd):
             concurso_numero = numero_atual - i
             resp = requests.get(f"{url_base}{concurso_numero}")
             if resp.status_code == 200:
                 dados = resp.json()
-                data = dados[0] if isinstance(dados, list) else dados
+                if isinstance(dados, list):
+                    data = dados[0]
+                else:
+                    data = dados
                 numero = int(data.get("concurso"))
                 dezenas = sorted([int(d) for d in data.get("dezenas")])
                 data_concurso = data.get("data")
                 concursos.append((numero, data_concurso, dezenas))
-    except Exception as e:
-        st.error(f"Erro ao acessar API: {e}")
+            else:
+                break
+    except Exception:
+        return []
     return concursos[::-1]
-
-# === Estatísticas dos concursos ===
-def extrair_padroes(concursos):
-    ultimos = concursos[-1][2]
-    todas = [d for _, _, dezenas in concursos for d in dezenas]
-    freq = Counter(todas)
-    mais_frequentes = [item[0] for item in freq.most_common()]
-    return {
-        'freq': freq,
-        'mais_frequentes': mais_frequentes,
-        'ultimo_jogo': ultimos
-    }
-
-def contar_padroes(jogo):
-    pares = sum(1 for d in jogo if d % 2 == 0)
-    impares = 15 - pares
-    linhas = [0]*5
-    colunas = [0]*5
-    moldura = sum(1 for d in jogo if d in MOLDURA)
-    primos = sum(1 for d in jogo if d in PRIMOS)
-    seq = 0
-    max_seq = 0
-
-    for d in jogo:
-        l = (d - 1) // 5
-        c = (d - 1) % 5
-        linhas[l] += 1
-        colunas[c] += 1
-
-    jogo.sort()
-    for i in range(1, len(jogo)):
-        if jogo[i] == jogo[i - 1] + 1:
-            seq += 1
-            max_seq = max(max_seq, seq)
-        else:
-            seq = 0
-
-    return {
-        'pares': pares,
-        'impares': impares,
-        'linhas': linhas,
-        'colunas': colunas,
-        'moldura': moldura,
-        'primos': primos,
-        'sequencia': max_seq + 1 if max_seq else 0,
-    }
-
-# === Geração inteligente de jogos ===
-def gerar_jogos_com_padroes(padroes, qtd_jogos=5):
-    jogos = []
-    numeros_possiveis = list(range(1, 26))
-    ultimo_jogo = set(padroes['ultimo_jogo'])
-
-    while len(jogos) < qtd_jogos:
-        jogo = set()
-        jogo.update(random.sample(padroes['mais_frequentes'][:20], 10))
-        restantes = list(set(numeros_possiveis) - jogo)
-        jogo.update(random.sample(restantes, 15 - len(jogo)))
-        jogo = sorted(jogo)
-
-        p = contar_padroes(jogo)
-
-        if (
-            6 <= p['pares'] <= 9 and
-            8 <= p['moldura'] <= 12 and
-            3 <= p['primos'] <= 7 and
-            2 <= p['sequencia'] <= 5 and
-            len(set(jogo) & ultimo_jogo) >= 5
-        ):
-            jogos.append(jogo)
-
-    return jogos
 
 def formatar_data(data_str):
     formatos = [
@@ -119,31 +53,84 @@ def formatar_data(data_str):
             continue
     return data_str
 
-# === Interface ===
+def gerar_cartao_possivel(padrao):
+    tentativas = 0
+    while tentativas < 500:
+        jogo = sorted(random.sample(range(1, 26), 15))
+        if verificar_padroes(jogo, padrao):
+            return jogo
+        tentativas += 1
+    return []
+
+def verificar_padroes(jogo, padrao):
+    pares = sum(1 for d in jogo if d % 2 == 0)
+    primos = sum(1 for d in jogo if d in [2, 3, 5, 7, 11, 13, 17, 19, 23])
+    moldura = sum(1 for d in jogo if d in [1,2,3,4,5,6,10,11,15,16,20,21,22,23,24,25])
+    sequencias = sum(1 for i in range(len(jogo)-1) if jogo[i]+1 == jogo[i+1])
+    repetidos = sum(1 for d in jogo if d in padrao)
+    return (
+        5 <= pares <= 10 and
+        5 <= primos <= 9 and
+        8 <= moldura <= 13 and
+        1 <= sequencias <= 4 and
+        9 <= repetidos <= 13
+    )
+
+# === Interface com abas ===
+
 st.set_page_config(page_title="Lotofácil Avançado", layout="centered")
-st.title("🎯 Gerador Inteligente de Jogos - Lotofácil")
+st.title("🎯 Ferramenta Inteligente - Lotofácil")
+aba1, aba2 = st.tabs(["📋 Gerar Jogos", "✅ Conferir Jogos"])
 
-st.markdown("Este gerador usa **análise matemática completa** dos últimos 4 concursos da Lotofácil.")
+# === Aba 1: Gerar Jogos ===
 
-qtd_cartoes = st.slider("Quantos cartões deseja gerar?", min_value=3, max_value=30, value=5)
-
-if st.button("🔍 Gerar Jogos"):
+with aba1:
+    st.subheader("📋 Gerador de Jogos com base em padrões matemáticos")
+    qtd_cartoes = st.slider("Quantos cartões deseja gerar?", 3, 30, 5)
+    
     concursos = capturar_ultimos_resultados(4)
-    if concursos:
-        st.subheader("📅 Concursos utilizados:")
-        for numero, data, dezenas in concursos:
-            data_formatada = formatar_data(data)
-            st.write(f"Concurso {numero} - {data_formatada}: {', '.join(f'{d:02d}' for d in dezenas)}")
+    if not concursos:
+        st.error("Erro ao buscar concursos. Verifique sua conexão.")
+    else:
+        ultimos = [d for (_, _, d) in concursos]
+        numeros_frequentes = {}
+        for jogo in ultimos:
+            for dezena in jogo:
+                numeros_frequentes[dezena] = numeros_frequentes.get(dezena, 0) + 1
+        base_padroes = sorted(numeros_frequentes, key=numeros_frequentes.get, reverse=True)[:18]
 
-        padroes = extrair_padroes(concursos)
-        jogos = gerar_jogos_com_padroes(padroes, qtd_cartoes)
+        if st.button("🔍 Gerar Jogos"):
+            jogos = []
+            for _ in range(qtd_cartoes):
+                jogo = gerar_cartao_possivel(base_padroes)
+                if jogo:
+                    jogos.append(jogo)
 
-        st.subheader("🧠 Jogos gerados:")
-        for i, jogo in enumerate(jogos, 1):
-            st.write(f"Jogo {i}: {', '.join(f'{d:02d}' for d in jogo)}")
+            if jogos:
+                st.success(f"{len(jogos)} jogos gerados com sucesso!")
+                for i, jogo in enumerate(jogos, 1):
+                    st.write(f"Cartão {i}: {', '.join(f'{n:02d}' for n in jogo)}")
 
-        txt = "\n".join([f"Jogo {i+1}: {', '.join(f'{d:02d}' for d in jogo)}" for i, jogo in enumerate(jogos)])
-        st.download_button("📄 Baixar jogos em TXT", txt, file_name="jogos_lotofacil_avancado.txt")
+                texto = "\n".join(",".join(f"{n:02d}" for n in jogo) for jogo in jogos)
+                st.download_button("📥 Baixar jogos em .TXT", texto, file_name="jogos_lotofacil.txt")
 
+# === Aba 2: Conferência ===
+
+with aba2:
+    st.subheader("✅ Conferência de Jogos com Último Sorteio")
+    jogos_txt = st.text_area("Cole aqui os seus jogos (ex: 01, 02, 03...)", height=200)
+    if st.button("🔎 Conferir"):
+        concursos = capturar_ultimos_resultados(1)
+        if concursos:
+            _, _, dezenas_oficiais = concursos[-1]
+            st.markdown(f"**Último sorteio:** {', '.join(f'{d:02d}' for d in dezenas_oficiais)}")
+
+            linhas = jogos_txt.strip().split("\n")
+            for i, linha in enumerate(linhas, 1):
+                dezenas = [int(d.strip()) for d in linha.split(",") if d.strip().isdigit()]
+                acertos = sorted(set(dezenas) & set(dezenas_oficiais))
+                st.write(f"Jogo {i} - {len(acertos)} acertos: {', '.join(f'{d:02d}' for d in acertos)}")
+
+# === Rodapé ===
 st.markdown("---")
-st.markdown("📊 Estatísticas reais aplicadas automaticamente - por **SAM ROCK** 🚀")
+st.markdown("Desenvolvido por Tio Rock 🔍")
