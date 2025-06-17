@@ -106,6 +106,19 @@ def gerar_jogos_com_padroes(padroes, qtd_jogos=5):
 
     return jogos
 
+def formatar_data(data_str):
+    formatos = [
+        "%Y-%m-%dT%H:%M:%S.000Z",
+        "%Y-%m-%dT%H:%M:%SZ",
+        "%Y-%m-%d"
+    ]
+    for fmt in formatos:
+        try:
+            return datetime.strptime(data_str, fmt).strftime("%d/%m/%Y")
+        except ValueError:
+            continue
+    return data_str
+
 # === Interface ===
 st.set_page_config(page_title="Lotofácil Avançado", layout="centered")
 st.title("🎯 Gerador Inteligente de Jogos - Lotofácil")
@@ -119,7 +132,7 @@ if st.button("🔍 Gerar Jogos"):
     if concursos:
         st.subheader("📅 Concursos utilizados:")
         for numero, data, dezenas in concursos:
-            data_formatada = datetime.strptime(data, "%Y-%m-%dT%H:%M:%S.000Z").strftime("%d/%m/%Y")
+            data_formatada = formatar_data(data)
             st.write(f"Concurso {numero} - {data_formatada}: {', '.join(f'{d:02d}' for d in dezenas)}")
 
         padroes = extrair_padroes(concursos)
