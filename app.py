@@ -1,85 +1,67 @@
 import streamlit as st
-import time
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
+import random
 
-st.set_page_config(page_title="Captura Betfair", layout="wide")
-st.title("Captura de Números da Roleta - Betfair")
+st.set_page_config(page_title="Lotofácil - Geração Inteligente", layout="centered")
 
-# Lista de seletores sugeridos para testar automaticamente
-SELETORES_SUGERIDOS = [
-    ".roulette-history .number",         # comum em páginas da Betfair
-    ".history-bar .number",              # comum em Sportingbet
-    ".statistics .number",               # alternativa estatística
-    ".number-history-item",              # comum em componentes JavaScript
-    ".last-numbers span",                # possível estrutura dinâmica
-    ".latest-results .number",           # outro comum
-]
+st.title("🎯 Lotofácil - Geração Inteligente de Jogos")
 
-def iniciar_driver():
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    return webdriver.Chrome(options=chrome_options)
+st.markdown("""
+Insira os **15 números sorteados no último concurso da Lotofácil** e clique em **Gerar Jogos** para obter 5 sugestões baseadas em padrões estatísticos.
+""")
 
-def tentar_seletores(url):
-    driver = iniciar_driver()
-    driver.get(url)
-    time.sleep(10)
-    resultados = []
+def validar_concurso(concurso):
+    if len(concurso) != 15:
+        st.error("Você deve informar exatamente 15 dezenas.")
+        return False
+    if any(n < 1 or n > 25 for n in concurso):
+        st.error("As dezenas devem estar entre 1 e 25.")
+        return False
+    if len(set(concurso)) != 15:
+        st.error("As dezenas não podem se repetir.")
+        return False
+    return True
 
-    seletor_usado = None
-    for seletor in SELETORES_SUGERIDOS:
-        try:
-            elementos = driver.find_elements(By.CSS_SELECTOR, seletor)
-            temp_resultados = []
-            for el in elementos:
-                texto = el.text.strip()
-                if texto.isdigit() and 0 <= int(texto) <= 36:
-                    temp_resultados.append(texto)
-            if temp_resultados:
-                resultados = temp_resultados
-                seletor_usado = seletor
-                break
-        except Exception:
-            continue
-    driver.quit()
-    return resultados, seletor_usado
+def aplicar_regras(concurso_anterior):
+    todos_numeros = set(range(1, 26))
+    jogos_gerados = []
 
-# UI
-url = st.text_input("Cole a URL da roleta:", value="https://...")
+    while len(jogos_gerados) < 5:
+        jogo = set()
 
-col1, col2 = st.columns([1, 1])
-with col1:
-    capturar = st.button("Capturar Números")
-with col2:
-    resetar = st.button("Resetar Resultados")
+        qtd_reutilizadas = random.randint(8, 13)
+        dezenas_reutilizadas = random.sample(concurso_anterior, qtd_reutilizadas)
+        jogo.update(dezenas_reutilizadas)
 
-if "resultados" not in st.session_state:
-    st.session_state.resultados = []
+        restantes = list(todos_numeros - jogo)
+        jogo.update(random.sample(restantes, 15 - len(jogo)))
 
-# Captura automática testando seletores
-if capturar:
-    with st.spinner("Tentando capturar números com seletores sugeridos..."):
-        resultados, seletor_utilizado = tentar_seletores(url)
-        if resultados:
-            st.session_state.resultados.extend(resultados)
-            st.success(f"Números capturados com sucesso! Seletor usado: `{seletor_utilizado}`")
-            st.write(resultados)
-            with open("numeros_capturados.txt", "w") as f:
-                f.write("\n".join(st.session_state.resultados))
-        else:
-            st.warning("Nenhum número foi capturado com os seletores disponíveis.")
+        # Regra: entre 6 e 9 pares
+        pares = [n for n in jogo if n % 2 == 0]
+        if 6 <= len(pares) <= 9:
+            jogos_gerados.append(sorted(jogo))
 
-if resetar:
-    st.session_state.resultados = []
-    st.success("Resultados resetados.")
+    return jogos_gerados
 
-# Exibição final
-if st.session_state.resultados:
-    st.subheader("Números Coletados:")
-    st.write(st.session_state.resultados)
-    st.download_button("Baixar como .txt", "\n".join(st.session_state.resultados), file_name="numeros_capturados.txt")
+numeros_input = st.text_input("Digite os 15 números sorteados separados por espaço (ex: 1 3 5 7 9 11 13 15 17 19 21 23 24 25 2):")
+
+if st.button("🎰 Gerar Jogos"):
+    try:
+        dezenas = list(map(int, numeros_input.strip().split()))
+        if validar_concurso(dezenas):
+            jogos = aplicar_regras(dezenas)
+
+            st.success("Jogos gerados com sucesso!")
+            for i, jogo in enumerate(jogos, 1):
+                st.write(f"Jogo {i}: {', '.join(f'{d:02d}' for d in jogo)}")
+
+            # Exportar para TXT
+            if st.button("⬇️ Baixar jogos em .TXT"):
+                conteudo = "\n".join([f"Jogo {i+1}: {', '.join(f'{d:02d}' for d in j)}" for i, j in enumerate(jogos)])
+                st.download_button("Clique para baixar", data=conteudo, file_name="jogos_lotofacil.txt")
+
+    except ValueError:
+        st.error("Entrada inválida. Verifique se digitou corretamente os números.")
+        
+# Rodapé personalizado
+st.markdown("---")
+st.markdown("🔢 Desenvolvido com inteligência matemática aplicada à Lotofácil - por SAM ROCK 💡")
